@@ -30,6 +30,7 @@ app.get("/webhooks/audio-stream", streamElevenLabsAudio);
 
 // مسار المكالمة الأساسي
 app.post("/webhooks/speech", async (req, res) => {
+    const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
     try {
         if (!req.body || typeof req.body !== "object") {
             return res.status(400).json({ error: "you must send body" });
@@ -56,9 +57,7 @@ app.post("/webhooks/speech", async (req, res) => {
                     action: "input",
                     type: ["speech"],
                     speech: { language: "ar-EG", endOnSilence: 2 },
-                    eventUrl: [
-                        "https://wavy-legible-yo-yo.ngrok-free.dev/webhooks/speech",
-                    ],
+                    eventUrl: [`${BASE_URL}/webhooks/speech`],
                 },
             ]);
         }
@@ -75,19 +74,17 @@ app.post("/webhooks/speech", async (req, res) => {
                 },
             ]);
         }
-
         res.json([
             {
                 action: "stream",
                 streamUrl: [getAudioStreamUrl(aiResult?.reply)],
+                bargeIn: true,
             },
             {
                 action: "input",
                 type: ["speech"],
                 speech: { language: "ar-EG", endOnSilence: 2 },
-                eventUrl: [
-                    "https://wavy-legible-yo-yo.ngrok-free.dev/webhooks/speech",
-                ],
+                eventUrl: [`${BASE_URL}/webhooks/speech`],
             },
         ]);
     } catch (error) {

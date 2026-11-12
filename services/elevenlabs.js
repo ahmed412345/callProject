@@ -2,7 +2,8 @@ const VOICE_ID = "N2lVS1w4EtoT3dr4eOWO"; // الـ ID الخاص بالصوت ا
 
 // 1. دالة مساعدة بتجهز رابط البث لـ Vonage
 export function getAudioStreamUrl(text) {
-    return `${process.env.URL}/webhooks/audio-stream?text=${encodeURIComponent(text)}&.mp3`;
+    const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
+    return `${BASE_URL}/webhooks/audio-stream?text=${encodeURIComponent(text)}&.mp3`;
 }
 
 // 2. الـ Handler المسؤول عن جلب الصوت من ElevenLabs وبثه للمكالمة
