@@ -40,9 +40,33 @@ export async function managementMsg(callId, userMessage) {
             session.customerData,
         );
 
+        try {
+            const stringData = JSON.stringify(session.customerData);
+
+            const response = await fetch(
+                "https://hero430.app.n8n.cloud/webhook/data",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: stringData,
+                },
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log("Success:", result);
+        } catch (error) {
+            console.error("Error sending data to n8n:", error);
+        }
+
         // TODO: حفظ session.customerData في قاعدة البيانات هنا قبل الحذف
 
-        activeCalls.delete(callId);
+        https: activeCalls.delete(callId);
     }
 
     return aiResult;
