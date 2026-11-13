@@ -14,6 +14,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 //علشان نخلي السيرفر مينامش
 app.get("/ping", (req, res) => {
@@ -31,68 +32,81 @@ app.get("/startcall", async (req, res) => {
 app.get("/webhooks/audio-stream", streamFishAudio);
 
 // مسار المكالمة الأساسي
+// تأكد من وجود هذا السطر في أعلى ملف Express لديك قبل تعريف المسارات
+
+// دالة مساعدة لتجنب كسر الـ XML إذا احتوى الرابط على علامة &
+const escapeXml = (unsafe) =>
+    String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+
 app.post("/webhooks/speech", async (req, res) => {
     const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
+
     try {
         if (!req.body || typeof req.body !== "object") {
-            return res.status(400).json({ error: "you must send body" });
+            return res.status(400).send("Missing request body");
         }
 
-        const callId = req.body.uuid;
-        const userMessage = req.body.speech?.results?.[0]?.text?.trim();
+        const callId = req.body.CallSid;
+        const userMessage = req.body.SpeechResult?.trim();
 
         if (!callId) {
-            return res.status(400).json({ error: "callId is required" });
+            return res.status(400).send("CallSid is required");
         }
 
+        // 1. في حالة عدم وضوح الصوت أو الصمت
         if (!userMessage) {
-            return res.json([
-                {
-                    action: "stream",
-                    streamUrl: [
-                        getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح."),
-                    ],
-                },
-                {
-                    action: "input",
-                    type: ["speech"],
-                    speech: { language: "ar-EG", endOnSilence: 2 },
-                    eventUrl: [`${BASE_URL}/webhooks/speech`],
-                },
-            ]);
+            const retryAudio = escapeXml(
+                getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح.")
+            );
+            res.type("text/xml");
+            return res.send(`
+                <Response>
+                    <Play>${retryAudio}</Play>
+                    <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST" />
+                </Response>
+            `);
         }
 
-        console.log(userMessage);
+        console.log("User said:", userMessage);
 
         const aiResult = await managementMsg(callId, userMessage);
+        const replyAudio = escapeXml(getAudioStreamUrl(aiResult?.reply));
 
+        // 2. في حالة انتهاء المكالمة (تشغيل الرد ثم إغلاق الخط)
         if (aiResult?.isCallEnded) {
-            return res.json([
-                {
-                    action: "stream",
-                    streamUrl: [getAudioStreamUrl(aiResult?.reply)],
-                },
-            ]);
+            res.type("text/xml");
+            return res.send(`
+                <Response>
+                    <Play>${replyAudio}</Play>
+                    <Hangup />
+                </Response>
+            `);
         }
-        res.json([
-            {
-                action: "stream",
-                streamUrl: [getAudioStreamUrl(aiResult?.reply)],
-                bargeIn: true,
-            },
-            {
-                action: "input",
-                type: ["speech"],
-                speech: { language: "ar-EG", endOnSilence: 2 },
-                eventUrl: [`${BASE_URL}/webhooks/speech`],
-            },
-        ]);
+
+        // 3. استمرار المحادثة (وضع <Play> داخل <Gather> يفعّل المقاطعة bargeIn تلقائياً)
+        res.type("text/xml");
+        return res.send(`
+            <Response>
+                <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST">
+                    <Play>${replyAudio}</Play>
+                </Gather>
+            </Response>
+        `);
     } catch (error) {
         console.error("Webhook Error:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        res.type("text/xml");
+        res.status(500).send(`
+            <Response>
+                <Hangup />
+            </Response>
+        `);
     }
 });
-
 app.use(errorMiddleware);
 
 // تشغيل السيرفر بعد الاتصال بقاعدة البيانات
