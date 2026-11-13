@@ -1,12 +1,13 @@
 import vonage from "../config/vonage.js";
 
 export async function makeCall() {
+    const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
     try {
         const response = await vonage.voice.createOutboundCall({
             to: [
                 {
                     type: "phone",
-                    number: "201035396140",
+                    number: "20108034926",
                 },
             ],
             from: {
@@ -16,9 +17,7 @@ export async function makeCall() {
             ncco: [
                 {
                     action: "stream",
-                    streamUrl: [
-                        "https://res.cloudinary.com/g9qbcsa1/video/upload/v1794511192/first-msg.mp3",
-                    ],
+                    streamUrl: [`${BASE_URL}/audio-stream.mp3`],
                     level: 0,
                     loop: 1,
                     bargeIn: false,
@@ -30,9 +29,10 @@ export async function makeCall() {
                         language: "ar-EG", // تحديد اللهجة المصرية (أو ar-SA للسعودية) لدقة أعلى
                         endOnSilence: 2, // يتوقف عن الاستماع بعد ثانيتين من صمت المتصل
                         maxDuration: 10, // أقصى مدة للاستماع (بالثواني)
+                        bargeIn: false,
                     },
                     // الرابط الذي سيستقبل النص الذي قاله المستخدم
-                    eventUrl: [`${process.env.URL}/webhooks/speech`],
+                    eventUrl: [`${BASE_URL}/webhooks/speech`],
                 },
             ],
         });

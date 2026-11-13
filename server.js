@@ -6,10 +6,7 @@ import mongoConnect from "./config/db_connect.js";
 import errorMiddleware from "./middleware/error.js";
 import { makeCall } from "./services/make-call.js";
 import { managementMsg } from "./services/management-msg.js";
-import {
-    getAudioStreamUrl,
-    streamElevenLabsAudio,
-} from "./services/elevenlabs.js";
+import { getAudioStreamUrl, streamFishAudio } from "./services/fish.js";
 
 dotenv.config();
 
@@ -23,10 +20,15 @@ app.get("/ping", (req, res) => {
     res.end("pong");
 });
 
-app.get("/startcall", makeCall);
+app.use("/", express.static("public/"));
+
+app.get("/startcall", async (req, res) => {
+    await makeCall();
+    res.json({ status: "successful" });
+});
 
 // ربط مسار البث الصوتي بالـ Handler المنفصل
-app.get("/webhooks/audio-stream", streamElevenLabsAudio);
+app.get("/webhooks/audio-stream", streamFishAudio);
 
 // مسار المكالمة الأساسي
 app.post("/webhooks/speech", async (req, res) => {
@@ -48,9 +50,7 @@ app.post("/webhooks/speech", async (req, res) => {
                 {
                     action: "stream",
                     streamUrl: [
-                        getAudioStreamUrl(
-                            "عذراً، لم أسمعك بوضوح، هل يمكنك الإعادة؟",
-                        ),
+                        getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح."),
                     ],
                 },
                 {

@@ -2,8 +2,13 @@ import { getAICallResponse } from "./ask-ai.js";
 
 const firstMsg = {
     role: "assistant",
-    content:
-        "السلام عليكم يا فندم، مع حضرتك خدمة العملاء، عندنا خصومات على المراوح، تحب تعرف تفاصيل العرض؟",
+    content: JSON.stringify({
+        customerName: null,
+        customerAddress: null,
+        reply: "السلام عليكم، مع حضرتك أحمد من خدمة العملاء. عندنا بوكس هدايا مميز ، بسعر 350 جنيه شامل التوصيل. تحب تعرف تفاصيل أكتر؟",
+        isCallEnded: false,
+        intent: "INQUIRY",
+    }),
 };
 
 const activeCalls = new Map();
