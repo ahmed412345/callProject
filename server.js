@@ -28,11 +28,8 @@ app.get("/startcall", async (req, res) => {
     res.json({ status: "successful" });
 });
 
-// ربط مسار البث الصوتي بالـ Handler المنفصل
+// ربط مسار البث الصوتي بالـ
 app.get("/webhooks/audio-stream", streamFishAudio);
-
-// مسار المكالمة الأساسي
-// تأكد من وجود هذا السطر في أعلى ملف Express لديك قبل تعريف المسارات
 
 // دالة مساعدة لتجنب كسر الـ XML إذا احتوى الرابط على علامة &
 const escapeXml = (unsafe) =>
@@ -88,7 +85,7 @@ app.post("/webhooks/speech", async (req, res) => {
             `);
         }
 
-        // 3. استمرار المحادثة (وضع <Play> داخل <Gather> يفعّل المقاطعة bargeIn تلقائياً)
+        // لما نحطها جوه دا معناه لو المستخدم قاطع المتحدث يتوقف
         res.type("text/xml");
         return res.send(`
             <Response>
