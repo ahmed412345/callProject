@@ -1,14 +1,7 @@
 import dns from "node:dns";
 import { Readable } from "node:stream";
-import { Agent } from "node:undici";
 
 dns.setDefaultResultOrder("ipv4first");
-
-// إبقاء الاتصال مفتوحاً مع Fish Audio لتوفير وقت الـ Handshake في كل جملة
-const keepAliveAgent = new Agent({
-    keepAliveTimeout: 60000,
-    keepAliveMaxTimeout: 60000,
-});
 
 const VOICE_ID = "3d5d62bab7114e10a2380784f1a6449e";
 
@@ -29,7 +22,6 @@ export async function streamFishAudio(req, res) {
 
         const response = await fetch("https://api.fish.audio/v1/tts", {
             method: "POST",
-            dispatcher: keepAliveAgent,
             signal: abortController.signal,
             headers: {
                 Authorization: `Bearer ${process.env.FISH_API_KEY}`,
@@ -40,7 +32,7 @@ export async function streamFishAudio(req, res) {
                 text: textToSpeak,
                 reference_id: VOICE_ID,
                 format: "mp3",
-                mp3_bitrate: 128, // رفعه لـ 128 يملأ بفر المشغل في نصف الوقت فيبدأ النطق أسرع
+                mp3_bitrate: 128, // ملء بفر المشغل أسرع لبدء النطق فوراً
                 chunk_length: 100,
                 latency: "balanced",
             }),
@@ -53,8 +45,8 @@ export async function streamFishAudio(req, res) {
 
         res.setHeader("Content-Type", "audio/mpeg");
         res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("X-Accel-Buffering", "no"); // منع البروكسي من تجميع الصوت قبل إرساله
-        res.flushHeaders(); // فتح قناة البث فوراً
+        res.setHeader("X-Accel-Buffering", "no"); // منع البروكسي من حجز أول جزء من الصوت
+        res.flushHeaders(); // إرسال الهيدرز فوراً لفتح قناة الصوت
 
         const nodeStream = Readable.fromWeb(response.body);
         nodeStream.on("error", () => res.end());

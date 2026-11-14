@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-import mongoConnect from "./config/db_connect.js";
+// import mongoConnect from "./config/db_connect.js";
 import errorMiddleware from "./middleware/error.js";
 import { makeCall } from "./services/make-call.js";
 import { managementMsg } from "./services/management-msg.js";
@@ -109,7 +109,7 @@ app.use(errorMiddleware);
 // تشغيل السيرفر بعد الاتصال بقاعدة البيانات
 const startServer = async () => {
     try {
-        await mongoConnect();
+        // await mongoConnect();
         const PORT = process.env.PORT || 3000;
         app.listen(PORT, () => {
             console.log(`the server is running now at ${PORT} `);
