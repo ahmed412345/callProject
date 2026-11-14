@@ -2,7 +2,7 @@ const VOICE_ID = "3d5d62bab7114e10a2380784f1a6449e";
 
 export function getAudioStreamUrl(text) {
     const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
-    return `${BASE_URL}/webhooks/audio-stream?text=${encodeURIComponent(text)}&.mp3`;
+    return `${BASE_URL}/webhooks/audio-stream.mp3?text=${encodeURIComponent(text)}`;
 }
 
 export async function streamFishAudio(req, res) {
@@ -23,8 +23,7 @@ export async function streamFishAudio(req, res) {
                 text: textToSpeak,
                 reference_id: VOICE_ID,
                 format: "mp3",
-                mp3_bitrate: 64,
-                chunk_length: 100, // يقلل حجم القطعة الأولى لتسريع بدء النطق (القيمة بين 100 و 300)
+                mp3_bitrate: 128,
                 latency: "balanced", // أسرع خيار متاح رسمياً في Fish Audio
             }),
         });
@@ -38,11 +37,13 @@ export async function streamFishAudio(req, res) {
         res.setHeader("Content-Type", "audio/mpeg");
 
         const reader = response.body.getReader();
+        console.time("speech_time");
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             res.write(Buffer.from(value));
         }
+        console.timeEnd("speech_time");
         res.end();
     } catch (error) {
         console.error("Streaming Error:", error);

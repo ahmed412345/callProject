@@ -7,6 +7,7 @@ import errorMiddleware from "./middleware/error.js";
 import { makeCall } from "./services/make-call.js";
 import { managementMsg } from "./services/management-msg.js";
 import { getAudioStreamUrl, streamFishAudio } from "./services/fish.js";
+import { warmupGroqConnection } from "./services/ask-ai.js";
 
 dotenv.config();
 
@@ -24,12 +25,13 @@ app.get("/ping", (req, res) => {
 app.use("/", express.static("public/"));
 
 app.get("/startcall", async (req, res) => {
+    warmupGroqConnection();
     await makeCall();
     res.json({ status: "successful" });
 });
 
 // ربط مسار البث الصوتي بالـ
-app.get("/webhooks/audio-stream", streamFishAudio);
+app.get("/webhooks/audio-stream.mp3", streamFishAudio);
 
 // دالة مساعدة لتجنب كسر الـ XML إذا احتوى الرابط على علامة &
 const escapeXml = (unsafe) =>
@@ -58,13 +60,13 @@ app.post("/webhooks/speech", async (req, res) => {
         // 1. في حالة عدم وضوح الصوت أو الصمت
         if (!userMessage) {
             const retryAudio = escapeXml(
-                getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح.")
+                getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح."),
             );
             res.type("text/xml");
             return res.send(`
                 <Response>
                     <Play>${retryAudio}</Play>
-                    <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST" />
+                    <Gather input="speech" language="ar-EG" speechTimeout="auto" action="${BASE_URL}/webhooks/speech" hints="تفاصيل, تفاصيل أكتر, بكام, السعر, موافق, تمام, عايز أطلب, البوكس, عنواني, العنوان, ساكن في, محافظة, دمياط, القاهرة, الجيزة, الإسكندرية, شارع, بجوار" method="POST" />
                 </Response>
             `);
         }
@@ -89,9 +91,17 @@ app.post("/webhooks/speech", async (req, res) => {
         res.type("text/xml");
         return res.send(`
             <Response>
-                <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST">
+                <Gather 
+                    input="speech" 
+                    language="ar-EG" 
+                    speechTimeout="auto" 
+                    timeout="6" 
+                    hints="تفاصيل, تفاصيل أكتر, بكام, السعر, موافق, تمام, عايز أطلب, البوكس, عنواني, العنوان, ساكن في, محافظة, دمياط, القاهرة, الجيزة, الإسكندرية, شارع, بجوار"
+                    action="${BASE_URL}/webhooks/speech" 
+                    method="POST">
                     <Play>${replyAudio}</Play>
                 </Gather>
+                <Redirect method="POST">${BASE_URL}/webhooks/speech</Redirect>
             </Response>
         `);
     } catch (error) {

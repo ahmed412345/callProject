@@ -23,9 +23,10 @@ export async function managementMsg(callId, userMessage) {
     //بنجيب بيانات الرحله الحاليه
     const session = activeCalls.get(callId);
 
+    console.time("model_time");
     // ارسال الرساله الحاليه والتاريخ للموديل
     const aiResult = await getAICallResponse(userMessage, session.history);
-
+    console.timeEnd("model_time");
     //لو بيانات العميل اتحددت نضيفها
     if (aiResult.customerName)
         session.customerData.name = aiResult.customerName;
@@ -41,37 +42,51 @@ export async function managementMsg(callId, userMessage) {
 
     if (aiResult.isCallEnded) {
         console.log(
-            `🧹 انتهت المكالمة [${callId}]. بيانات العميل النهائية:`,
+            `🧹 انتهت المكالمة [${callId}] (${aiResult.intent}). بيانات العميل:`,
             session.customerData,
         );
 
-        try {
-            const stringData = JSON.stringify(session.customerData);
+        // 1. نرسل الداتا لـ n8n فقط لو العميل أكد الطلب وبياناته كاملة
+        if (
+            aiResult.intent === "CONFIRMED" &&
+            session.customerData?.name &&
+            session.customerData?.address
+        ) {
+            const stringData = JSON.stringify({
+                callId,
+                ...session.customerData,
+                status: "CONFIRMED",
+            });
 
-            const response = await fetch(
-                "https://hero430.app.n8n.cloud/webhook/data",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: stringData,
+            // بدون await عشان منأخرش رد الوداع على العميل في المكالمة
+            fetch("https://hero430.app.n8n.cloud/webhook/data", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
                 },
+                body: stringData,
+                signal: AbortSignal.timeout(5000),
+            })
+                .then(async (response) => {
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const result = await response.json();
+                    console.log("✅ تم إرسال الطلب لـ n8n بنجاح:", result);
+                })
+                .catch((error) => {
+                    console.error("❌ فشل إرسال الطلب لـ n8n:", error.message);
+                });
+        } else {
+            console.log(
+                `🚫 لم يتم إرسال طلب لـ n8n (الحالة: ${aiResult.intent})`,
             );
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            console.log("Success:", result);
-        } catch (error) {
-            console.error("Error sending data to n8n:", error);
         }
 
-        // TODO: حفظ session.customerData في قاعدة البيانات هنا قبل الحذف
-
-        https: activeCalls.delete(callId);
+        // 2. مسح الجلسة من الرامات في جميع الحالات (تأكيد أو رفض)
+        activeCalls.delete(callId);
     }
 
     return aiResult;

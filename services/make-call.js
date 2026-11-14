@@ -5,8 +5,8 @@ export async function makeCall() {
 
     try {
         const response = await signalwire.calls.create({
-            to: "+12077087792",
-            from: "+12077087792",
+            to: "+12076721376",
+            from: "+12076721376",
             twiml: `
                 <Response>
                     <Play loop="1">${BASE_URL}/audio-stream.mp3</Play>
