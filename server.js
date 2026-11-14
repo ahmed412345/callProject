@@ -40,6 +40,29 @@ const escapeXml = (unsafe) =>
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&apos;");
 
+// دالة تقسم الرد الطويل لجمل قصيرة عشان أول جملة تتنطق فوراً
+function splitIntoPlayTags(text) {
+    if (!text) return "";
+
+    // تقسيم النص عند النقطة أو علامة الاستفهام أو التعجب أو الفاصلة مع الحفاظ على الجمل مفيدة
+    const sentences = text
+        .split(/(?<=[.؟!،\n])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+    // لو النص قصير أصلاً أو جملة واحدة، منقسموش
+    const chunks = sentences.length > 0 ? sentences : [text];
+
+    return chunks
+        .map((chunk) => {
+            // نبدأ توليد كل جملة في الخلفية دلوقتي حالاً بالتوازي!
+            preloadAudio(chunk);
+            const url = escapeXml(getAudioStreamUrl(chunk));
+            return `<Play>${url}</Play>`;
+        })
+        .join("\n                    ");
+}
+
 app.post("/webhooks/speech", async (req, res) => {
     const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
 
@@ -57,14 +80,15 @@ app.post("/webhooks/speech", async (req, res) => {
 
         // 1. في حالة عدم وضوح الصوت أو الصمت
         if (!userMessage) {
-            const retryAudio = escapeXml(
-                getAudioStreamUrl("بعتذر من حضرتك صوتك غير واضح.")
-            );
+            const retryText = "بعتذر من حضرتك صوتك غير واضح.";
+            preloadAudio(retryText); // يجهزها في الخلفية قبل ما Twilio يطلبها
+            const retryAudio = escapeXml(getAudioStreamUrl(retryText));
+
             res.type("text/xml");
             return res.send(`
                 <Response>
                     <Play>${retryAudio}</Play>
-                    <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST" />
+                    <Gather input="speech" language="ar-EG" speechTimeout="auto" action="${BASE_URL}/webhooks/speech" method="POST" />
                 </Response>
             `);
         }
@@ -72,14 +96,16 @@ app.post("/webhooks/speech", async (req, res) => {
         console.log("User said:", userMessage);
 
         const aiResult = await managementMsg(callId, userMessage);
-        const replyAudio = escapeXml(getAudioStreamUrl(aiResult?.reply));
+
+        // تقسيم الرد لـ Play tags مع بدء توليد الصوت في الخلفية فوراً
+        const playTags = splitIntoPlayTags(aiResult?.reply);
 
         // 2. في حالة انتهاء المكالمة (تشغيل الرد ثم إغلاق الخط)
         if (aiResult?.isCallEnded) {
             res.type("text/xml");
             return res.send(`
                 <Response>
-                    <Play>${replyAudio}</Play>
+                    ${playTags}
                     <Hangup />
                 </Response>
             `);
@@ -89,8 +115,8 @@ app.post("/webhooks/speech", async (req, res) => {
         res.type("text/xml");
         return res.send(`
             <Response>
-                <Gather input="speech" language="ar-EG" speechTimeout="0.5" action="${BASE_URL}/webhooks/speech" method="POST">
-                    <Play>${replyAudio}</Play>
+                <Gather input="speech" language="ar-EG" speechTimeout="auto" action="${BASE_URL}/webhooks/speech" method="POST">
+                    ${playTags}
                 </Gather>
             </Response>
         `);

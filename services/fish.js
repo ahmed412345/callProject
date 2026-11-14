@@ -1,9 +1,53 @@
 import dns from "node:dns";
-import { Readable } from "node:stream";
-
 dns.setDefaultResultOrder("ipv4first");
 
 const VOICE_ID = "3d5d62bab7114e10a2380784f1a6449e";
+
+// كاش مؤقت في الرامات لحفظ طلبات الصوت اللي بدأناها مسبقاً
+const audioCache = new Map();
+
+// دالة مساعدة تطلب الصوت من Fish Audio وترجعه كـ Buffer جاهز
+async function fetchAudioBuffer(text) {
+    const response = await fetch("https://api.fish.audio/v1/tts", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${process.env.FISH_API_KEY}`,
+            "Content-Type": "application/json",
+            model: "s2.1-pro-free",
+        },
+        body: JSON.stringify({
+            text: text,
+            reference_id: VOICE_ID,
+            format: "mp3",
+            mp3_bitrate: 64,
+            chunk_length: 100,
+            latency: "balanced",
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(await response.text());
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+}
+
+// دالة بتبدأ توليد الصوت في الخلفية قبل ما Twilio يطلبه أصلاً
+export function preloadAudio(text) {
+    if (!text || audioCache.has(text)) return;
+
+    const promise = fetchAudioBuffer(text).catch((err) => {
+        console.error("Preload Fish Audio Error:", err);
+        audioCache.delete(text);
+        return null;
+    });
+
+    audioCache.set(text, promise);
+
+    // مسح الصوت من الرامات بعد 30 ثانية عشان مياخدش مساحة
+    setTimeout(() => audioCache.delete(text), 30000);
+}
 
 export function getAudioStreamUrl(text) {
     const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.URL;
@@ -11,48 +55,28 @@ export function getAudioStreamUrl(text) {
 }
 
 export async function streamFishAudio(req, res) {
-    const abortController = new AbortController();
-    req.on("close", () => abortController.abort());
-
     try {
         const textToSpeak = req.query.text;
         if (!textToSpeak) {
             return res.status(400).send("Text is required");
         }
 
-        const response = await fetch("https://api.fish.audio/v1/tts", {
-            method: "POST",
-            signal: abortController.signal,
-            headers: {
-                Authorization: `Bearer ${process.env.FISH_API_KEY}`,
-                "Content-Type": "application/json",
-                model: "s2.1-pro-free",
-            },
-            body: JSON.stringify({
-                text: textToSpeak,
-                reference_id: VOICE_ID,
-                format: "mp3",
-                mp3_bitrate: 128, // ملء بفر المشغل أسرع لبدء النطق فوراً
-                chunk_length: 100,
-                latency: "balanced",
-            }),
-        });
-
-        if (!response.ok) {
-            console.error("Fish Audio Error:", await response.text());
-            return res.status(500).send("Error generating audio");
+        // لو الصوت بدأنا توليده مسبقاً هناخده فوراً، لو لأ هنطلبه دلوقتي
+        let audioBuffer;
+        if (audioCache.has(textToSpeak)) {
+            audioBuffer = await audioCache.get(textToSpeak);
+            audioCache.delete(textToSpeak); // نمسحه أول ما نستخدمه
         }
 
-        res.setHeader("Content-Type", "audio/mpeg");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("X-Accel-Buffering", "no"); // منع البروكسي من حجز أول جزء من الصوت
-        res.flushHeaders(); // إرسال الهيدرز فوراً لفتح قناة الصوت
+        if (!audioBuffer) {
+            audioBuffer = await fetchAudioBuffer(textToSpeak);
+        }
 
-        const nodeStream = Readable.fromWeb(response.body);
-        nodeStream.on("error", () => res.end());
-        nodeStream.pipe(res);
+        // إرسال Content-Length بيخلي Twilio يشغل الصوت فوراً بدون انتظار تجميع البفر
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("Content-Length", audioBuffer.length);
+        return res.send(audioBuffer);
     } catch (error) {
-        if (error.name === "AbortError") return res.end();
         console.error("Streaming Error:", error);
         if (!res.headersSent) {
             res.status(500).send("Internal Server Error");
